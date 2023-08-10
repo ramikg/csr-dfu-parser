@@ -1,0 +1,180 @@
+//------------------------------------------------
+// File Mask: *.dfu
+// ID Bytes: 43 53 52 2D 64 66 75 // CSR-dfu
+//------------------------------------------------
+
+local uint64 SIGNATURE_SIZE = 128;
+local uint64 NUMBER_OF_AREAS_PER_TYPE = 16;
+
+void AssertChecksum(uint64 offset, uint64 length, uint32 checksum)
+{
+    local uint32 calculated_checksum = Checksum(CHECKSUM_CRC32, offset, length) ^ 0xFFFFFFFF;
+    local string buf;
+    SPrintf(buf, "Expected checksum 0x%04X, got 0x%04X instead.", calculated_checksum, checksum);
+    Assert(calculated_checksum == checksum, buf);
+}
+
+struct ss_descriptor {
+    uint64 bc;
+    uint64 fg;
+    uint32 len <format=hex>;
+};
+
+struct as_descriptor {
+    uint16 vm;
+    int64 s;
+    uint32 len <format=hex>;
+};
+
+struct ps_descriptor {
+    uint64 bc;
+    uint32 len <format=hex>;
+    uint32 sps_len <format=hex>;
+    uint32 aps_len <format=hex>;
+};
+
+struct fs_descriptor {
+    uint32 len <format=hex>;
+    uint16 fs;
+    uint16 vm;
+    uint32 unknown;
+    uint32 real_length;
+};
+
+typedef struct {
+    char file_id[8];
+    Assert(RegExMatch(file_id, "CSR-dfu\\d"), "Not CSR DFU.");
+    uint16 file_version;
+    uint32 file_length <format=hex>;
+    uint16 file_header_length <format=hex>;
+    char file_description[64];
+
+    uint32 stack_software_length <format=hex>;
+    uint32 application_software_length <format=hex>;
+    uint32 persistent_store_length <format=hex>;
+    uint32 stack_persistent_store_length <format=hex>;
+    uint32 application_persistent_store_length <format=hex>;
+    uint32 description_length <format=hex>;
+
+    ss_descriptor ssd[NUMBER_OF_AREAS_PER_TYPE];
+    as_descriptor asd[NUMBER_OF_AREAS_PER_TYPE];
+    ps_descriptor psd[NUMBER_OF_AREAS_PER_TYPE];
+    fs_descriptor fsd[NUMBER_OF_AREAS_PER_TYPE];
+} CsrDfuHeader;
+
+typedef struct {
+    char id[8];
+    Assert(!Strcmp(id, "CSRbcfw1"), "Invalid stack software area.");
+    uint32 crc <format=hex>;
+    uint32 program_data_length <format=hex>;
+    uint16 constant_data_length <format=hex>;
+    uint16 version;
+    char program_data[this.program_data_length];
+    char constant_data[this.constant_data_length];
+    AssertChecksum(startof(program_data_length), FTell() - startof(program_data_length), crc);
+} StackSoftware;
+
+typedef struct {
+    uint16 app_len;
+    char app_data[this.app_len];
+} ApplicationSoftware;
+
+enum <uint16> PERSISTENT_STORE_RECORD_ACTION
+{
+    CLEAR = 0,
+    SET_IF_DOESNT_EXIST = 1,
+    SET_ALWAYS = 2
+};
+
+typedef struct {
+    PERSISTENT_STORE_RECORD_ACTION action;
+    uint16 key;
+    uint16 length;
+    if (length)
+    {
+        uint16 data[this.length];
+    }
+} PersistentStoreRecord <read=Str("Key = %hu (length %hu)", key, length)>;
+
+typedef struct {
+    uint16 clear;
+    uint16 keys;
+    // Enabling optimization may result in all lengths to be equal
+    PersistentStoreRecord records[this.keys] <optimize=false>;
+    char signature[SIGNATURE_SIZE];    
+    uint32 crc <format=hex>;
+    AssertChecksum(startof(clear), startof(crc) - startof(clear), crc);
+} PersistentStore;
+
+typedef struct (uint64 size) {
+    char id[8];
+    Assert(!Strcmp(id, "fsr_dfu1"), "Invalid stack software area.");
+    char unknown[size - sizeof(id)];
+} FS;
+
+typedef struct {
+    uint16 bcd_device;
+    uint16 id_product;
+    uint16 id_vendor;
+    uint16 bcd_dfu <format=hex>;
+    char dfu_signature[3];
+    char length <format=hex>;
+    uint32 crc <format=hex>;
+    AssertChecksum(0, startof(crc), crc);
+} DfuSuffix;
+
+LittleEndian();
+CsrDfuHeader header;
+
+local uint64 area_index;
+for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
+{
+    if (header.ssd[area_index].len)
+    {
+        StackSoftware stack_software;
+        Assert(sizeof(stack_software) == header.ssd[area_index].len, "Stack software size discrepancy.");
+    }
+}
+for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
+{
+    if (header.asd[area_index].len)
+    {
+        ApplicationSoftware application_software;
+        Assert(sizeof(application_software) == header.asd[area_index].len, "Application software size discrepancy.");
+    }
+}
+for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
+{
+    if (header.psd[area_index].len)
+    {
+        PersistentStore persistent_store;
+        Assert(sizeof(persistent_store) == header.psd[area_index].len, "Persistent store discrepancy.");
+    }
+}
+for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
+{
+    if (header.psd[area_index].sps_len)
+    {
+        PersistentStore stack_persistent_store;
+        Assert(sizeof(stack_persistent_store) == header.psd[area_index].sps_len, "Stack persistent store discrepancy.");
+    }
+}
+for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
+{
+    if (header.psd[area_index].aps_len)
+    {
+        PersistentStore application_persistent_store;
+        Assert(sizeof(application_persistent_store) == header.psd[area_index].aps_len, "Application persistent store discrepancy.");
+    }
+}
+for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
+{
+    if (header.fsd[area_index].real_length)
+    {
+        FS fs(header.fsd[area_index].real_length);
+    }
+}
+
+uint32 file_crc <format=hex>;
+AssertChecksum(0, startof(file_crc), file_crc);
+DfuSuffix dfu_suffix;
