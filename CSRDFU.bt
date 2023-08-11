@@ -60,6 +60,10 @@ typedef struct {
     as_descriptor asd[NUMBER_OF_AREAS_PER_TYPE];
     ps_descriptor psd[NUMBER_OF_AREAS_PER_TYPE];
     fs_descriptor fsd[NUMBER_OF_AREAS_PER_TYPE];
+    if (this.description_length)
+    {
+        wchar_t description[this.description_length / sizeof(wchar_t)];
+    }
 } CsrDfuHeader;
 
 typedef struct {
