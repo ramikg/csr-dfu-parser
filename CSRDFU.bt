@@ -100,12 +100,16 @@ typedef struct {
     }
 } PersistentStoreRecord <read=Str("Key = %hu (length %hu)", key, length)>;
 
-typedef struct {
+typedef struct (uint64 expected_length) {
     uint16 clear;
     uint16 keys;
     // Enabling optimization may result in all lengths to be equal
     PersistentStoreRecord records[this.keys] <optimize=false>;
-    char signature[SIGNATURE_SIZE];    
+    // TODO: Find decent way of determining whether signature is present
+    if (expected_length == FTell() - startof(clear) + SIGNATURE_SIZE + sizeof(uint32))
+    {
+        char signature[SIGNATURE_SIZE];
+    }
     uint32 crc <format=hex>;
     AssertChecksum(startof(clear), startof(crc) - startof(clear), crc);
 } PersistentStore;
@@ -151,7 +155,7 @@ for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
 {
     if (header.psd[area_index].len)
     {
-        PersistentStore persistent_store;
+        PersistentStore persistent_store(header.psd[area_index].len);
         Assert(sizeof(persistent_store) == header.psd[area_index].len, "Persistent store discrepancy.");
     }
 }
@@ -159,7 +163,7 @@ for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
 {
     if (header.psd[area_index].sps_len)
     {
-        PersistentStore stack_persistent_store;
+        PersistentStore stack_persistent_store(header.psd[area_index].sps_len);
         Assert(sizeof(stack_persistent_store) == header.psd[area_index].sps_len, "Stack persistent store discrepancy.");
     }
 }
@@ -167,7 +171,7 @@ for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
 {
     if (header.psd[area_index].aps_len)
     {
-        PersistentStore application_persistent_store;
+        PersistentStore application_persistent_store(header.psd[area_index].aps_len);
         Assert(sizeof(application_persistent_store) == header.psd[area_index].aps_len, "Application persistent store discrepancy.");
     }
 }
