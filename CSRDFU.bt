@@ -9,9 +9,9 @@ local uint64 NUMBER_OF_AREAS_PER_TYPE = 16;
 void AssertChecksum(uint64 offset, uint64 length, uint32 checksum)
 {
     local uint32 calculated_checksum = Checksum(CHECKSUM_CRC32, offset, length) ^ 0xFFFFFFFF;
-    local string buf;
-    SPrintf(buf, "Expected checksum 0x%04X, got 0x%04X instead.", calculated_checksum, checksum);
-    Assert(calculated_checksum == checksum, buf);
+    local string msg = Str("Expected checksum 0x%04X, got 0x%04X instead.", calculated_checksum, checksum);
+    Assert(calculated_checksum == checksum, msg);
+}
 }
 
 struct ss_descriptor {
@@ -73,14 +73,14 @@ typedef struct {
     uint32 program_data_length <format=hex>;
     uint16 constant_data_length <format=hex>;
     uint16 version;
-    char program_data[this.program_data_length];
-    char constant_data[this.constant_data_length];
+    byte program_data[this.program_data_length];
+    byte constant_data[this.constant_data_length];
     AssertChecksum(startof(program_data_length), FTell() - startof(program_data_length), crc);
 } StackSoftware;
 
 typedef struct {
     uint16 app_len;
-    char app_data[this.app_len];
+    byte app_data[this.app_len];
 } ApplicationSoftware;
 
 enum <uint16> PERSISTENT_STORE_RECORD_ACTION
@@ -106,12 +106,12 @@ typedef struct (uint64 expected_length) {
     // Enabling optimization may result in all lengths to be equal
     PersistentStoreRecord records[this.keys] <optimize=false>;
     // TODO: Find decent way of determining whether signature is present
-    if (expected_length == FTell() - startof(clear) + SIGNATURE_SIZE + sizeof(uint32))
+    if (expected_length == FTell() - startof(this) + SIGNATURE_SIZE + sizeof(uint32))
     {
-        char signature[SIGNATURE_SIZE];
+        byte signature[SIGNATURE_SIZE];
     }
     uint32 crc <format=hex>;
-    AssertChecksum(startof(clear), startof(crc) - startof(clear), crc);
+    AssertChecksum(startof(this), startof(crc) - startof(this), crc);
 } PersistentStore;
 
 typedef struct (uint64 size) {
@@ -126,7 +126,7 @@ typedef struct {
     uint16 id_vendor;
     uint16 bcd_dfu <format=hex>;
     char dfu_signature[3];
-    char length <format=hex>;
+    byte length <format=hex>;
     uint32 crc <format=hex>;
     AssertChecksum(0, startof(crc), crc);
 } DfuSuffix;
