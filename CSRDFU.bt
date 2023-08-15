@@ -12,6 +12,15 @@ void AssertChecksum(uint64 offset, uint64 length, uint32 checksum)
     local string msg = Str("Expected checksum 0x%04X, got 0x%04X instead.", calculated_checksum, checksum);
     Assert(calculated_checksum == checksum, msg);
 }
+
+uint32 ParsePdpEndian(uint32 x)
+{
+    local uint32 result = 0;
+    result += (x >> 16) & 0xFF;
+    result += (x >> 24) << 8;
+    result += (x & 0xFF) << 16;
+    result += ((x >> 8) & 0xFF) << 24;
+    return result;
 }
 
 struct ss_descriptor {
@@ -35,10 +44,11 @@ struct ps_descriptor {
 
 struct fs_descriptor {
     uint32 len <format=hex>;
-    uint16 fs;
-    uint16 vm;
-    uint32 unknown;
-    uint32 real_length;
+    uint16 fs <format=hex>;
+    uint16 vm <format=hex>;
+    uint16 unknown1 <format=hex>;
+    uint16 unknown2 <format=hex>;
+    uint32 real_length <format=hex>;
 };
 
 typedef struct {
@@ -114,11 +124,57 @@ typedef struct (uint64 expected_length) {
     AssertChecksum(startof(this), startof(crc) - startof(this), crc);
 } PersistentStore;
 
+typedef struct {
+    uint16 length;
+    wchar_t str[this.length];
+} WideString <read=str>;
+
+typedef struct {
+    uint32 flags_and_name_offset <format=hex, read=Str("0x%08X", ParsePdpEndian(this))>;
+    local uint32 name_offset = ParsePdpEndian(flags_and_name_offset) & 0xFFFFFF;
+    local byte flags = ParsePdpEndian(flags_and_name_offset) >> 24;
+    local int is_directory = flags & 0x80;
+
+    // For directories, this is the 1-based index of the first file block in the directory
+    uint32 data_offset <format=hex, read=Str("0x%08X", ParsePdpEndian(this))>;
+    uint32 size <format=hex, read=Str("0x%08X", ParsePdpEndian(this))>;
+    local uint64 original_position;
+    if (name_offset)
+    {
+        original_position = FTell();
+        FSeek(startof(file_system.magic_prefix) + name_offset * sizeof(uint16));
+        WideString name;
+        FSeek(original_position);
+    }
+
+    if (!is_directory)
+    {
+        original_position = FTell();
+        FSeek(startof(file_system.magic_prefix) + ParsePdpEndian(data_offset) * sizeof(uint16));
+        byte data[ParsePdpEndian(size)];
+        FSeek(original_position);
+    }
+
+    local string display_name = name_offset ? name.str : "";
+    display_name += is_directory ? "/" : "";
+} FileBlock <read=display_name>;
+
 typedef struct (uint64 size) {
     char id[8];
     Assert(!Strcmp(id, "fsr_dfu1"), "Invalid stack software area.");
-    char unknown[size - sizeof(id)];
-} FS;
+    byte maybe_signature[SIGNATURE_SIZE];
+    uint32 maybe_checksum<format=hex>;
+    char magic_prefix[4]; // PDP-endian storage of "File"
+    Assert(!Strcmp(magic_prefix, "iFel"), "Invalid FS magic_prefix.");
+    uint16 unknown1;
+    uint16 unknown2;
+    uint16 number_of_files;
+    FileBlock file_block[this.number_of_files] <optimize=false>;
+    FSkip(size - (FTell() - startof(this)) - 4);
+    // TODO: There seem to remain a few unparsed bytes right before magic_suffix
+    char magic_suffix[4];
+    Assert(!Strcmp(magic_suffix, "iFel"), "Invalid FS magic_suffix.");
+} FileSystem;
 
 typedef struct {
     uint16 bcd_device;
@@ -179,7 +235,7 @@ for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
 {
     if (header.fsd[area_index].real_length)
     {
-        FS fs(header.fsd[area_index].real_length);
+        FileSystem file_system(header.fsd[area_index].real_length);
     }
 }
 

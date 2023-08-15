@@ -1,0 +1,41 @@
+int original_file = GetFileNum();
+RunTemplate("CSRDFU.bt");
+
+local wstring OUTPUT_DIRECTORY = FileNameGetPathW(GetFileNameW()) + "_" +  FileNameGetBaseW(GetFileNameW()) + ".fs";
+
+void Unpack(wstring current_directory, uint32 parent_index)
+{
+    if (file_system.file_block[parent_index].is_directory)
+    {
+        wstring inner_directory = current_directory + file_system.file_block[parent_index].display_name;
+        MakeDir(OUTPUT_DIRECTORY + inner_directory);        
+
+        uint32 child_index;
+        uint32 first_child_index = ParsePdpEndian(file_system.file_block[parent_index].data_offset) - 1;
+        uint32 number_of_children = ParsePdpEndian(file_system.file_block[parent_index].size);
+        for (child_index = first_child_index;
+             child_index < first_child_index + number_of_children;
+             ++child_index)
+        {
+            Unpack(inner_directory, child_index);
+        }
+    }
+    else
+    {
+        local wstring file_path = current_directory + file_system.file_block[parent_index].name.str;
+        Printf("%s\n", file_path);
+
+        byte buf[ParsePdpEndian(file_system.file_block[parent_index].size)];
+        Memcpy(buf, file_system.file_block[parent_index].data, sizeof(buf));
+        int output_file = FileNew("Hex", false);
+        FileSelect(output_file);
+        WriteBytes(buf, 0, sizeof(buf));
+
+        FileSave(OUTPUT_DIRECTORY + file_path);
+        FileClose();
+        FileSelect(original_file);
+    }
+}
+
+Printf("Output directory: %s\n", OUTPUT_DIRECTORY);
+Unpack("", 0);
