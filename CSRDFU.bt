@@ -16,10 +16,8 @@ void AssertChecksum(uint64 offset, uint64 length, uint32 checksum)
 uint32 ParsePdpEndian(uint32 x)
 {
     local uint32 result = 0;
-    result += (x >> 16) & 0xFF;
-    result += (x >> 24) << 8;
-    result += (x & 0xFF) << 16;
-    result += ((x >> 8) & 0xFF) << 24;
+    result += (x >> 16) & 0xFFFF;
+    result += (x & 0xFFFF) << 16;
     return result;
 }
 
