@@ -13,6 +13,19 @@ void AssertChecksum(uint64 offset, uint64 length, uint32 checksum)
     Assert(calculated_checksum == checksum, msg);
 }
 
+void AssertFsChecksum(uint64 offset, uint32 length_in_words)
+{
+    local uint16 checksum = 0;
+    local uint64 i;
+
+    for (i = 0; i < length_in_words; ++i)
+    {
+        checksum ^= ReadUShort(offset + sizeof(uint16) * i);
+    }
+
+    Assert(checksum == 0, Str("Filesystem checksum: Expected 0. Got 0x%04X instead.", checksum));
+}
+
 uint32 ParsePdpEndian(uint32 x)
 {
     local uint32 result = 0;
@@ -157,21 +170,24 @@ typedef struct {
     display_name += is_directory ? "/" : "";
 } FileBlock <read=display_name>;
 
-typedef struct (uint64 size) {
+typedef struct {
     char id[8];
-    Assert(!Strcmp(id, "fsr_dfu1"), "Invalid stack software area.");
+    Assert(!Strcmp(id, "fsr_dfu1"), "Invalid filesystem area.");
     byte maybe_signature[SIGNATURE_SIZE];
-    uint32 maybe_checksum<format=hex>;
+    uint32 maybe_checksum <format=hex, read=Str("0x%08X", ParsePdpEndian(this))>;
+
     char magic_prefix[4]; // PDP-endian storage of "File"
-    Assert(!Strcmp(magic_prefix, "iFel"), "Invalid FS magic_prefix.");
-    uint16 unknown1;
-    uint16 unknown2;
+    Assert(!Strcmp(magic_prefix, "iFel"), "Invalid filesystem magic_prefix.");
+    uint32 size_in_words <format=hex, read=Str("0x%08X", ParsePdpEndian(this))>;
     uint16 number_of_files;
     FileBlock file_block[this.number_of_files] <optimize=false>;
-    FSkip(size - (FTell() - startof(this)) - 4);
-    // TODO: There seem to remain a few unparsed bytes right before magic_suffix
+    FSeek(startof(magic_prefix) + sizeof(uint16) * ParsePdpEndian(size_in_words) - 8);
+    // TODO: There seem to remain a few unparsed bytes right before this field
+    uint32 size_in_words_copy <format=hex, read=Str("0x%08X", ParsePdpEndian(this))>;
     char magic_suffix[4];
-    Assert(!Strcmp(magic_suffix, "iFel"), "Invalid FS magic_suffix.");
+    Assert(!Strcmp(magic_suffix, "iFel"), "Invalid filesystem magic_suffix.");
+
+    AssertFsChecksum(startof(magic_prefix), ParsePdpEndian(size_in_words_copy));
 } FileSystem;
 
 typedef struct {
@@ -233,7 +249,8 @@ for (area_index = 0; area_index < NUMBER_OF_AREAS_PER_TYPE; ++area_index)
 {
     if (header.fsd[area_index].real_length)
     {
-        FileSystem file_system(header.fsd[area_index].real_length);
+        FileSystem file_system;
+        Assert(sizeof(file_system) == header.fsd[area_index].real_length, "Filesystem size discrepancy.");
     }
 }
 
