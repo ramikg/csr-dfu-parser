@@ -9,7 +9,7 @@ local uint64 NUMBER_OF_AREAS_PER_TYPE = 16;
 void AssertChecksum(uint64 offset, uint64 length, uint32 checksum)
 {
     local uint32 calculated_checksum = Checksum(CHECKSUM_CRC32, offset, length) ^ 0xFFFFFFFF;
-    local string msg = Str("Expected checksum 0x%04X, got 0x%04X instead.", calculated_checksum, checksum);
+    local string msg = Str("Expected checksum 0x%08X, got 0x%08X instead.", calculated_checksum, checksum);
     Assert(calculated_checksum == checksum, msg);
 }
 
@@ -23,7 +23,7 @@ void AssertFsChecksum(uint64 offset, uint32 length_in_words)
         checksum ^= ReadUShort(offset + sizeof(uint16) * i);
     }
 
-    Assert(checksum == 0, Str("Filesystem checksum: Expected 0. Got 0x%04X instead.", checksum));
+    Assert(checksum == 0, Str("Filesystem checksum: Expected 0. Got 0x%08X instead.", checksum));
 }
 
 uint32 ParsePdpEndian(uint32 x)
