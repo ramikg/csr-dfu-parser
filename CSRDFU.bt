@@ -174,7 +174,7 @@ typedef struct {
     char id[8];
     Assert(!Strcmp(id, "fsr_dfu1"), "Invalid filesystem area.");
     byte maybe_signature[SIGNATURE_SIZE];
-    uint32 maybe_checksum <format=hex, read=Str("0x%08X", ParsePdpEndian(this))>;
+    uint32 unknown_checksum <format=hex>;
 
     char magic_prefix[4]; // PDP-endian storage of "File"
     Assert(!Strcmp(magic_prefix, "iFel"), "Invalid filesystem magic_prefix.");
