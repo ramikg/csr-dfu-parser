@@ -7,11 +7,12 @@ _010 Editor_ utilities for parsing the CSR DFU (Device Firmware Upgrade) file fo
 * An 010 Editor template for parsing the binary structure of a CSR DFU file.
 * An 010 Editor script for extracting the files from the File System area of CSR DFU files.
 
-Note that extracted audio _.pcm_/_.raw_ files may be converted to WAV using the following command:
 
-```sh
-ffmpeg -f s16be -ar 16k -ac 1 -i example.pcm example.wav
-```
+> [!TIP]
+> Extracted _.pcm_/_.raw_ audio files may be converted to WAV using the following command:
+> ```sh
+> ffmpeg -f s16be -ar 16k -ac 1 -i example.pcm example.wav
+> ```
 
 ## Resources
 
